@@ -191,7 +191,10 @@
       (next ? `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"><div class="k">Next · ${esc(next.t)}${next.tz === "IST" ? " India time" : ""}</div><div class="x" style="margin-top:4px">${esc(next.txt)}</div></div>`
         : tomorrow ? `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"><div class="k">Tomorrow · Day ${tomorrow.n}</div><div class="x" style="margin-top:4px">${esc(tomorrow.title)} — first up at ${esc(tomorrow.schedule[0].t)}</div></div>` : "");
     return heroHTML({ img: day.img, by: day.imgBy, short: true, eyebrow: `Day ${pad(day.n)} of 11 · ${esc(day.label)} · ${esc(day.city)}`, title: esc(day.title), lede: esc(day.tagline) }) +
-      `<div class="sec" style="padding-top:8px">
+      `<div class="split"><div class="col-main">
+      <div class="sec o2"><div class="eyebrow">Today's rhythm</div><h2>The day, hour by hour</h2>${timelineHTML(day)}</div>
+      </div><div class="col-side">
+      <div class="sec o1" style="padding-top:8px">
         <div class="card nowcard">${nowBlock}</div>
         ${tdacDue ? `<div class="flag"><div class="h">Thailand arrival card (TDAC)</div><div class="d">Fill it in for all three before Thu 24 Dec at <a href="https://tdac.immigration.go.th/" target="_blank" rel="noopener">tdac.immigration.go.th</a>. Tick it off in Essentials when done.</div></div>` : ""}
         <div class="btnrow">
@@ -200,8 +203,8 @@
           <a class="btn sm" href="#day/${day.n}">Full day details</a>
         </div>
       </div>
-      <div class="sec"><div class="eyebrow">Today's rhythm</div><h2>The day, hour by hour</h2>${timelineHTML(day)}</div>
-      <div class="sec"><div class="eyebrow">Where we sleep tonight</div><div class="card"><div class="h" style="font-family:var(--serif);font-size:22px">${esc(day.sleep)}</div></div></div>`;
+      <div class="sec o3"><div class="eyebrow">Where we sleep tonight</div><div class="card"><div class="h" style="font-family:var(--serif);font-size:22px">${esc(day.sleep)}</div></div></div>
+      </div></div>`;
   }
 
   function countdownParts() {
@@ -219,13 +222,13 @@
       extra: `<div class="count" id="count"><div><div class="num">${c.d}</div><div class="lab">days</div></div><div><div class="num">${pad(c.h)}</div><div class="lab">hours</div></div><div><div class="num">${pad(c.m)}</div><div class="lab">minutes</div></div></div>
       <div class="muted" style="font-size:12px;margin-top:8px">until the 04:10 flight to Hanoi</div>`,
     }) +
-      `<div class="sec"><div class="eyebrow">Before we fly</div><h2>Things to sort out</h2><div class="card">${checklistHTML()}</div></div>
-      <div class="sec"><div class="eyebrow">At a glance</div><h2>The route</h2>
+      `<div class="split"><div class="col-main"><div class="sec"><div class="eyebrow">Before we fly</div><h2>Things to sort out</h2><div class="card">${checklistHTML()}</div></div></div>
+      <div class="col-side"><div class="sec"><div class="eyebrow">At a glance</div><h2>The route</h2>
         <div class="card"><ul class="rows">${DAYS.map((d) => `<li><a href="#day/${d.n}" style="text-decoration:none;color:inherit;display:flex;gap:14px;align-items:baseline">
           <span class="serif" style="font-size:22px;color:var(--gold2);min-width:28px">${pad(d.n)}</span>
           <span><span class="h">${esc(d.title)}</span><span class="d" style="display:block">${esc(d.label)} · ${esc(d.city)}</span></span></a></li>`).join("")}</ul></div>
         <div class="btnrow"><a class="btn solid block" href="#journey">Explore the journey</a></div>
-      </div>`;
+      </div></div></div>`;
   }
   function viewAfter() {
     const n = store.get("vb_photos", []).length;
@@ -254,17 +257,17 @@
     const flags = d.bookings.filter((b) => b.flag), books = d.bookings.filter((b) => !b.flag);
     const photos = store.get("vb_photos", []).filter((p) => +p.day === d.n);
     return heroHTML({ img: d.img, by: d.imgBy, short: true, back: "#journey", eyebrow: `Day ${pad(d.n)} · ${esc(d.label)} · ${esc(d.city)}`, title: esc(d.title), lede: esc(d.tagline) }) +
-      `${flags.map((f) => `<div style="padding:0 22px"><div class="flag"><div class="h">${esc(f.type.replace(/^Flag:\s*/i, ""))}</div><div class="d">${esc(f.detail)}</div></div></div>`).join("")}
-      <div class="sec"><div class="eyebrow">Tonight</div><div class="card"><div style="font-family:var(--serif);font-size:23px">${esc(d.sleep)}</div>
+      `${flags.map((f) => `<div class="flagwrap"><div class="flag"><div class="h">${esc(f.type.replace(/^Flag:\s*/i, ""))}</div><div class="d">${esc(f.detail)}</div></div></div>`).join("")}
+      <div class="split"><div class="col-main"><div class="sec o2"><div class="eyebrow">Hour by hour</div><h2>The day</h2>${timelineHTML(d)}</div></div><div class="col-side">
+      <div class="sec o1"><div class="eyebrow">Tonight</div><div class="card"><div style="font-family:var(--serif);font-size:23px">${esc(d.sleep)}</div>
         ${h ? `<div class="muted" style="font-size:13.5px;margin-top:4px">${esc(h.address)}</div><div class="btnrow">${h.local ? `<button class="btn sm" data-driver="${h.id}">Show the driver</button>` : ""}<a class="btn sm" href="${mapsLink(h.map)}" target="_blank" rel="noopener">Map</a></div>` : ""}
       </div></div>
-      <div class="sec"><div class="eyebrow">Hour by hour</div><h2>The day</h2>${timelineHTML(d)}</div>
-      <div class="rule"></div>
-      <div class="sec"><div class="eyebrow">Getting around</div><h2>How to get there</h2><div class="card"><ul class="rows">${d.travel.map((t) => `<li><div class="h">${esc(t.place)}</div><div class="d">${esc(t.how)}</div><a href="${mapsLink(t.place.replace(/\(transfer\)/i, "") + ", " + d.city)}" target="_blank" rel="noopener" style="font-size:12px">Map →</a></li>`).join("")}</ul></div></div>
-      <div class="sec"><div class="eyebrow">Where to eat</div><h2>Lunch &amp; dinner</h2><div class="food">
+      <div class="sec o3"><div class="eyebrow">Getting around</div><h2>How to get there</h2><div class="card"><ul class="rows">${d.travel.map((t) => `<li><div class="h">${esc(t.place)}</div><div class="d">${esc(t.how)}</div><a href="${mapsLink(t.place.replace(/\(transfer\)/i, "") + ", " + d.city)}" target="_blank" rel="noopener" style="font-size:12px">Map →</a></li>`).join("")}</ul></div></div>
+      <div class="sec o4"><div class="eyebrow">Where to eat</div><h2>Lunch &amp; dinner</h2><div class="food">
         ${["Lunch", "Dinner"].map((m) => d.food[m].length ? `<div class="card"><div class="meal">${m}</div><ul>${d.food[m].map((f) => `<li>${esc(f)}</li>`).join("")}</ul></div>` : "").join("")}
       </div><div class="note">Restaurant names are suggestions — check opening hours on the day. See the Dish decoder in Essentials for what's in each dish.</div></div>
-      <div class="sec"><div class="eyebrow">Bookings</div><h2>What's booked</h2><div class="card"><ul class="rows">${books.map((b) => `<li><div class="d" style="color:#e5ddcf">${esc(b.detail)}</div></li>`).join("")}</ul></div></div>
+      <div class="sec o5"><div class="eyebrow">Bookings</div><h2>What's booked</h2><div class="card"><ul class="rows">${books.map((b) => `<li><div class="d" style="color:#e5ddcf">${esc(b.detail)}</div></li>`).join("")}</ul></div></div>
+      </div></div>
       ${photos.length ? `<div class="sec"><div class="eyebrow">Our photos from this day</div><div class="masonry" style="margin-top:12px">${photos.slice(0, 6).map((p) => `<button data-open="${esc(p.id)}"><img loading="lazy" src="${thumb(p.id, 600)}" onerror="this.onerror=null;this.src='${thumbAlt(p.id, 600)}'" alt=""></button>`).join("")}</div><a class="btn sm" href="#photos" style="margin-top:6px">See all ${photos.length}</a></div>` : ""}
       <div class="daynav">${prev ? `<a href="#day/${prev.n}">← Day ${prev.n}<b>${esc(prev.title)}</b></a>` : "<span></span>"}${next ? `<a class="r" href="#day/${next.n}">Day ${next.n} →<b>${esc(next.title)}</b></a>` : "<span></span>"}</div>`;
   }
@@ -272,25 +275,25 @@
   /* ---------------- STAYS & FLIGHTS ---------------- */
   function viewStays() {
     return `<div class="sec" style="padding-top:calc(var(--safe-t) + 34px)"><div class="eyebrow">Getting there</div><h2 style="font-size:40px">Flights</h2>
-      ${T.flights.map((f) => `<div class="card flight">
+      <div class="cards">${T.flights.map((f) => `<div class="card flight">
         <div class="eyebrow">Day ${f.day} · ${esc(f.date)}${f.airline ? " · " + esc(f.airline) : ""}</div>
         <div class="route"><div class="code">${esc(f.fromCode)}</div><div class="line"></div><div class="code">${esc(f.toCode)}</div></div>
         <div class="tm"><div><b>${esc(f.dep)}</b>${esc(f.from)}${f.depTz ? `<br><small>${esc(f.depTz)}</small>` : ""}</div><div style="text-align:right"><b>${esc(f.arr)}</b>${esc(f.to)}${f.arrTz ? `<br><small>${esc(f.arrTz)}</small>` : ""}</div></div>
         ${f.via ? `<div class="muted" style="font-size:12.5px;margin-top:10px">Booked on ${esc(f.via)}</div>` : ""}
         ${f.flag ? `<div class="flag" style="margin-bottom:0"><div class="d">${esc(f.flag)}</div></div>` : ""}
-      </div>`).join("")}
+      </div>`).join("")}</div>
       <div class="note">Times are local unless marked. Vietnam and Thailand are both 1 hr 30 min ahead of India.</div>
     </div>
     <div class="rule"></div>
     <div class="sec"><div class="eyebrow">Where we sleep</div><h2 style="font-size:40px">Stays</h2>
-      ${T.hotels.map((h) => `<div class="card hotel">
+      <div class="cards">${T.hotels.map((h) => `<div class="card hotel">
         <div class="eyebrow">${esc(h.city)} · ${esc(h.dates)}</div>
         <h3>${esc(h.name)}</h3>
         <div class="muted" style="font-size:14px">${esc(h.address)}</div>
         <div style="font-size:14px;margin-top:10px;color:#e1d8ca">${esc(h.note)}</div>
         ${h.via ? `<div class="muted" style="font-size:12.5px;margin-top:8px">Booked on ${esc(h.via)}</div>` : ""}
         <div class="btnrow">${h.local ? `<button class="btn sm solid" data-driver="${h.id}">Show the driver</button>` : ""}<a class="btn sm" href="${mapsLink(h.map)}" target="_blank" rel="noopener">Map</a>${h.phone ? `<a class="btn sm" href="tel:${h.phone.replace(/\s/g, "")}">Call</a>` : ""}</div>
-      </div>`).join("")}
+      </div>`).join("")}</div>
     </div>`;
   }
 
@@ -544,7 +547,7 @@
     const rates = store.get("vb_rates", { VND: 275, THB: 0.36 });
     const pk = store.get("vb_pack", {});
     return `<div class="sec" style="padding-top:calc(var(--safe-t) + 34px)"><div class="eyebrow">Everything else</div><h2 style="font-size:44px">Essentials</h2></div>
-    <div class="sec" style="padding-top:0">
+    <div class="sec acc-wrap" style="padding-top:0">
       <details class="acc" ${phase() === "before" ? "open" : ""}><summary>Before we fly</summary><div class="body">${checklistHTML()}</div></details>
       <details class="acc"><summary>Visas &amp; entry</summary><div class="body">${E.visa}</div></details>
       <details class="acc"><summary>Money converter</summary><div class="body conv">
