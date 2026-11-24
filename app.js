@@ -88,25 +88,73 @@
     }).join("")}</ul>`;
   }
 
-  function checklistHTML(limitKey) {
-    const st = store.get("vb_check", {});
+  /* Shared checklist: ticks sync to all three phones through the Google script */
+  function getChecks() {
+    const raw = store.get("vb_check", {}), out = {};
+    Object.keys(raw).forEach((k) => (out[k] = typeof raw[k] === "object" && raw[k] ? raw[k] : { done: !!raw[k] }));
+    return out;
+  }
+  const isDone = (id) => !!(getChecks()[id] || {}).done;
+  function checklistHTML() {
+    const st = getChecks();
     const items = T.checklist;
-    const done = items.filter((c) => st[c.id]).length;
+    const done = items.filter((c) => (st[c.id] || {}).done).length;
+    const who = store.get("vb_who", "");
+    const synced = store.get("vb_check_synced", 0);
+    const pending = Object.keys(store.get("vb_check_pending", {})).length;
+    const status = !SCRIPT ? "ticks are saved on this phone"
+      : pending ? `${pending} change${pending > 1 ? "s" : ""} waiting to sync`
+      : synced ? `shared with the family · synced ${new Date(synced).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}` : "shared with the family";
     return `<div class="progress"><i style="width:${Math.round((done / items.length) * 100)}%"></i></div>
-      <div class="muted" style="font-size:12px;margin-bottom:6px">${done} of ${items.length} done · ticks are saved on this phone</div>
-      ${items.map((c) => `<label class="check ${st[c.id] ? "done" : ""}">
-        <input type="checkbox" data-check="${c.id}" ${st[c.id] ? "checked" : ""}>
-        <div><div class="h">${esc(c.item)}${c.key && !st[c.id] ? `<span class="key">Important</span>` : ""}</div>${c.detail ? `<div class="d muted" style="font-size:13.5px">${esc(c.detail)}</div>` : ""}</div>
-      </label>`).join("")}`;
+      <div class="muted" style="font-size:12px;margin-bottom:6px">${done} of ${items.length} done · ${status}</div>
+      ${SCRIPT && !who ? `<div class="note" style="margin:8px 0">Who's ticking on this phone? <div class="who" style="margin-top:8px">${T.family.map((f) => `<button data-iam="${f}">${f}</button>`).join("")}</div></div>` : ""}
+      ${items.map((c) => { const s = st[c.id] || {}; return `<label class="check ${s.done ? "done" : ""}">
+        <input type="checkbox" data-check="${c.id}" ${s.done ? "checked" : ""}>
+        <div><div class="h">${esc(c.item)}${c.key && !s.done ? `<span class="key">Important</span>` : ""}</div>${c.detail ? `<div class="d muted" style="font-size:13.5px">${esc(c.detail)}</div>` : ""}${s.done && s.by ? `<div style="font-size:11.5px;color:var(--gold);margin-top:3px">✓ ${esc(s.by)}</div>` : ""}</div>
+      </label>`; }).join("")}`;
   }
   function bindChecklist(root) {
+    root.querySelectorAll("[data-iam]").forEach((b) => (b.onclick = (e) => { e.preventDefault(); store.set("vb_who", b.dataset.iam); render(true); }));
     root.querySelectorAll("[data-check]").forEach((el) =>
       el.addEventListener("change", () => {
-        const st = store.get("vb_check", {});
-        st[el.dataset.check] = el.checked; store.set("vb_check", st);
+        const st = getChecks();
+        const rec = { done: el.checked, by: store.get("vb_who", ""), at: Date.now() };
+        st[el.dataset.check] = rec; store.set("vb_check", st);
+        if (SCRIPT) { const p = store.get("vb_check_pending", {}); p[el.dataset.check] = rec; store.set("vb_check_pending", p); }
         render(true);
+        syncChecks();
       })
     );
+  }
+  let syncing = false;
+  async function syncChecks() {
+    if (!SCRIPT || syncing) return;
+    syncing = true;
+    try {
+      const pending = store.get("vb_check_pending", {});
+      const ids = Object.keys(pending);
+      if (ids.length) {
+        const code = askCode();
+        if (code) for (const id of ids) {
+          const r = await fetch(SCRIPT, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "check", code, id, done: pending[id].done, by: pending[id].by }) });
+          const j = await r.json();
+          if (j.ok) { const p = store.get("vb_check_pending", {}); delete p[id]; store.set("vb_check_pending", p); }
+          else if (j.error === "bad code") { store.set("vb_code", ""); toast("Wrong family code — tick again to retry"); break; }
+        }
+      }
+      const r = await fetch(SCRIPT + "?action=checks&t=" + Date.now());
+      const j = await r.json();
+      if (j.ok && j.checks) {
+        const p = store.get("vb_check_pending", {});
+        const before = JSON.stringify(store.get("vb_check", {}));
+        const merged = Object.assign({}, j.checks, p);
+        store.set("vb_check", merged);
+        store.set("vb_check_synced", Date.now());
+        const tab = (location.hash.replace("#", "") || "today").split("/")[0];
+        if ((tab === "today" || tab === "essentials") && before !== JSON.stringify(merged)) render(true);
+      }
+    } catch (e) { /* offline — will retry */ }
+    syncing = false;
   }
 
   function showDriver(id) {
@@ -136,8 +184,7 @@
     const cur = day.schedule[ni], next = day.schedule[ni + 1];
     const tomorrow = DAYS[day.n];
     const h = hotelById(day.hotel);
-    const st = store.get("vb_check", {});
-    const tdacDue = day.n >= 6 && day.n <= 9 && !st.tdac;
+    const tdacDue = day.n >= 6 && day.n <= 9 && !isDone("tdac");
     let nowBlock;
     if (!cur) nowBlock = `<div class="k"><span class="pulse"></span>First up today</div><div class="t">${esc(next.t)}</div><div class="x">${esc(next.txt)}</div>`;
     else nowBlock = `<div class="k"><span class="pulse"></span>Right now</div><div class="t">${esc(cur.t)}</div><div class="x">${esc(cur.txt)}</div>` +
@@ -575,5 +622,8 @@
 
   render(); net();
   refreshPhotos(true);
+  syncChecks();
+  window.addEventListener("online", syncChecks);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) syncChecks(); });
   if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 })();

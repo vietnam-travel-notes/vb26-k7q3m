@@ -1,5 +1,5 @@
 /* Offline support — keeps the guide working with no signal */
-const VERSION = "vb26-v1";
+const VERSION = "vb26-v2";
 const SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./data.js", "./config.js", "./manifest.json",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png"];
 importScripts("./data.js");
