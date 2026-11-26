@@ -117,15 +117,34 @@
     root.querySelectorAll("[data-iam]").forEach((b) => (b.onclick = (e) => { e.preventDefault(); store.set("vb_who", b.dataset.iam); render(true); }));
     root.querySelectorAll("[data-check]").forEach((el) =>
       el.addEventListener("change", () => {
-        const st = getChecks();
-        const rec = { done: el.checked, by: store.get("vb_who", ""), at: Date.now() };
-        st[el.dataset.check] = rec; store.set("vb_check", st);
-        if (SCRIPT) { const p = store.get("vb_check_pending", {}); p[el.dataset.check] = rec; store.set("vb_check_pending", p); }
-        render(true);
-        syncChecks();
+        setMark(el.dataset.check, el.checked);
       })
     );
   }
+  function setMark(id, done) {
+    const st = getChecks();
+    const rec = { done, by: store.get("vb_who", ""), at: Date.now() };
+    st[id] = rec; store.set("vb_check", st);
+    if (SCRIPT) { const p = store.get("vb_check_pending", {}); p[id] = rec; store.set("vb_check_pending", p); }
+    render(true);
+    syncChecks();
+  }
+  function ensureWho() {
+    let who = store.get("vb_who", "");
+    if (!who) {
+      const a = (prompt("Who's this? Type Dhruv, Preeti or Kavin") || "").trim().toLowerCase();
+      who = T.family.find((f) => f.toLowerCase() === a) || "";
+      if (who) store.set("vb_who", who);
+    }
+    return who;
+  }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-mark]");
+    if (!b) return;
+    e.preventDefault();
+    ensureWho();
+    setMark(b.dataset.mark, !isDone(b.dataset.mark));
+  });
   let syncing = false;
   async function syncChecks() {
     if (!SCRIPT || syncing) return;
@@ -151,7 +170,7 @@
         store.set("vb_check", merged);
         store.set("vb_check_synced", Date.now());
         const tab = (location.hash.replace("#", "") || "today").split("/")[0];
-        if ((tab === "today" || tab === "essentials") && before !== JSON.stringify(merged)) render(true);
+        if (tab !== "photos" && before !== JSON.stringify(merged)) render(true);
       }
     } catch (e) { /* offline — will retry */ }
     syncing = false;
@@ -172,6 +191,173 @@
     const b = e.target.closest("[data-driver]");
     if (b) { e.preventDefault(); showDriver(b.dataset.driver); }
   });
+
+  /* ---------------- WEATHER (Open-Meteo: live forecast + typical from past years) ---------------- */
+  const PLACES = T.places;
+  const placeById = (id) => PLACES.find((p) => p.id === id);
+  const omq = () => `latitude=${PLACES.map((p) => p.lat).join(",")}&longitude=${PLACES.map((p) => p.lon).join(",")}&elevation=${PLACES.map((p) => p.elev).join(",")}&timezone=Asia%2FBangkok`;
+  const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
+  let wxLoading = false;
+  async function loadWeather() {
+    if (wxLoading || !navigator.onLine) return;
+    wxLoading = true;
+    let changed = false;
+    try {
+      if (!store.get("vb_wx_typ", null)) {
+        const years = []; for (let y = 2016; y <= 2025; y++) years.push(y);
+        const res = await Promise.all(years.map((y) =>
+          fetch(`https://archive-api.open-meteo.com/v1/archive?${omq()}&start_date=${y}-12-14&end_date=${y}-12-28&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max`)
+            .then((r) => r.json()).catch(() => null)));
+        const data = {};
+        let ok = 0;
+        PLACES.forEach((p, pi) => {
+          data[p.id] = {};
+          for (let d = 16; d <= 26; d++) {
+            const tx = [], tn = [], rn = [], wd = [];
+            res.forEach((yr) => {
+              const loc = Array.isArray(yr) ? yr[pi] : null;
+              if (!loc || !loc.daily) return;
+              loc.daily.time.forEach((t, i) => {
+                if (Math.abs(+t.slice(8, 10) - d) > 1) return;
+                const D = loc.daily;
+                if (D.temperature_2m_max[i] != null) tx.push(D.temperature_2m_max[i]);
+                if (D.temperature_2m_min[i] != null) tn.push(D.temperature_2m_min[i]);
+                if (D.precipitation_sum[i] != null) rn.push(D.precipitation_sum[i]);
+                if (D.wind_speed_10m_max[i] != null) wd.push(D.wind_speed_10m_max[i]);
+              });
+            });
+            if (tx.length) { ok++; data[p.id][d] = { tmax: avg(tx), tmin: avg(tn), rain: Math.round((100 * rn.filter((v) => v >= 1).length) / (rn.length || 1)), wind: avg(wd) }; }
+          }
+        });
+        if (ok > 40) { store.set("vb_wx_typ", { at: Date.now(), data }); changed = true; }
+      }
+      const fc = store.get("vb_wx_fc", null);
+      const now = nowICT().real;
+      const toStart = (new Date("2026-12-16T00:00:00+07:00") - now) / 864e5;
+      const toEnd = (new Date("2026-12-27T00:00:00+07:00") - now) / 864e5;
+      if (toStart <= 15.5 && toEnd > 0 && (!fc || Date.now() - fc.at > 3 * 3600e3)) {
+        const r = await fetch(`https://api.open-meteo.com/v1/forecast?${omq()}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max&forecast_days=16`);
+        const arr = await r.json();
+        if (Array.isArray(arr)) {
+          const data = {};
+          PLACES.forEach((p, pi) => {
+            const D = arr[pi] && arr[pi].daily; data[p.id] = {};
+            if (D) D.time.forEach((t, i) => (data[p.id][t] = { code: D.weather_code[i], tmax: D.temperature_2m_max[i], tmin: D.temperature_2m_min[i], pop: D.precipitation_probability_max[i], mm: D.precipitation_sum[i], wind: D.wind_speed_10m_max[i] }));
+          });
+          store.set("vb_wx_fc", { at: Date.now(), data }); changed = true;
+        }
+      }
+    } catch (e) { /* offline or service busy — keep saved data */ }
+    wxLoading = false;
+    if (changed) { const tab = (location.hash.replace("#", "") || "today").split("/")[0]; if (["today", "day", "essentials"].includes(tab)) render(true); }
+  }
+  function wxFor(day, pid) {
+    const fc = store.get("vb_wx_fc", null);
+    const f = fc && fc.data[pid] && fc.data[pid][day.date];
+    if (f && f.tmax != null) return Object.assign({ src: "forecast", at: fc.at }, f);
+    const t = store.get("vb_wx_typ", null);
+    const ty = t && t.data[pid] && t.data[pid][+day.date.slice(8)];
+    return ty ? Object.assign({ src: "typical" }, ty) : null;
+  }
+  function wxIcon(w) {
+    if (w.src === "forecast") {
+      const c = w.code;
+      if (c === 0) return ["☀", "Clear"]; if (c <= 2) return ["🌤", "Mostly sunny"]; if (c === 3) return ["☁", "Cloudy"];
+      if (c === 45 || c === 48) return ["🌫", "Mist / fog"]; if (c >= 51 && c <= 57) return ["🌦", "Drizzle"];
+      if ((c >= 61 && c <= 67) || (c >= 80 && c <= 82)) return ["🌧", "Rain / showers"]; if (c >= 95) return ["⛈", "Thunderstorms"];
+      return ["⛅", "Mixed"];
+    }
+    return w.rain >= 50 ? ["🌧", "Often rainy"] : w.rain >= 25 ? ["🌦", "Some showers"] : ["⛅", "Mostly dry"];
+  }
+  function wearAdvice(w, place, dayN) {
+    const hi = w.tmax, lo = w.tmin, a = [];
+    const rain = w.src === "forecast" ? (w.pop || 0) : w.rain;
+    if (hi <= 18) a.push("Cool all day — sweater or light jacket, long trousers, closed shoes.");
+    else if (lo <= 17) a.push(`Cool morning and evening (about ${Math.round(lo)}°C), milder in the afternoon — dress in layers: T-shirt plus a sweater or light jacket.`);
+    else if (hi >= 31) a.push("Hot — light, breathable cotton, a cap, sunscreen and water.");
+    else if (hi >= 27) a.push("Warm — light cotton clothes; carry a thin layer for air-conditioning.");
+    else a.push("Mild — light clothes, plus a thin layer for the evening.");
+    if (rain >= 50) a.push("Rain likely — umbrella or rain jacket, and shoes that can get wet.");
+    else if (rain >= 25) a.push("Chance of showers — keep a compact umbrella in the bag.");
+    if (place.kind === "water") a.push("Windier on deck — an extra layer for the evening.");
+    else if ((w.wind || 0) >= 30) a.push("Breezy — a windproof layer helps.");
+    if (place.kind === "mountain") a.push("It feels like a hill station up there — wear the layers, don't just pack them.");
+    if (dayN === 10 && place.id === "bangkok") a.push("Grand Palace day: shoulders and knees covered.");
+    return a.join(" ");
+  }
+  function wxItemHTML(day, pid) {
+    const p = placeById(pid), w = wxFor(day, pid);
+    if (!w) return "";
+    const [ic, desc] = wxIcon(w);
+    const src = w.src === "forecast"
+      ? `Live forecast · updated ${new Date(w.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+      : "Typical for this date · past 10 years";
+    const rainTxt = w.src === "forecast" ? `Rain chance ${w.pop == null ? "—" : w.pop + "%"}` : `Rain on ${w.rain}% of past years`;
+    return `<div class="card wx"><div class="wxhead"><div><div class="eyebrow">${esc(p.name)} · ${esc(day.label)}</div><div class="wxsrc">${src}</div></div><div class="wxicon" title="${desc}">${ic}</div></div>
+      <div class="wxtemp">${Math.round(w.tmax)}°<span> / ${Math.round(w.tmin)}°C</span></div>
+      <div class="wxmeta">${desc} · ${rainTxt} · Wind up to ${Math.round(w.wind || 0)} km/h</div>
+      ${p.note ? `<div class="wxnote">${esc(p.note)}</div>` : ""}
+      <div class="wxwear"><b>What to wear</b> ${esc(wearAdvice(w, p, day.n))}</div></div>`;
+  }
+  function weatherHTML(day) {
+    const items = day.places.map((pid) => wxItemHTML(day, pid)).join("");
+    return items || `<div class="card wx"><div class="muted" style="font-size:14px">Weather appears the first time the app is opened with internet.</div></div>`;
+  }
+  function weatherEssentialsHTML() {
+    const rows = PLACES.map((p) => {
+      const ds = DAYS.filter((d) => d.places.includes(p.id));
+      const ws = ds.map((d) => wxFor(d, p.id)).filter(Boolean);
+      if (!ws.length) return "";
+      const agg = { tmax: Math.max(...ws.map((w) => w.tmax)), tmin: Math.min(...ws.map((w) => w.tmin)), wind: Math.max(...ws.map((w) => w.wind || 0)),
+        src: ws.some((w) => w.src === "forecast") ? "forecast" : "typical" };
+      agg.rain = Math.max(...ws.map((w) => (w.src === "forecast" ? w.pop || 0 : w.rain))); agg.pop = agg.rain;
+      const dates = ds.length > 1 ? `${ds[0].label.replace(/ Dec/, "")} – ${ds[ds.length - 1].label}` : ds[0].label;
+      return `<div class="wxrow"><div class="wxrow-h"><b>${esc(p.name)}</b><span>${esc(dates)}</span></div>
+        <div class="wxrow-t">${Math.round(agg.tmin)}–${Math.round(agg.tmax)}°C · rain up to ${agg.rain}% · ${agg.src === "forecast" ? "forecast" : "typical"}</div>
+        <div class="wxrow-w">${esc(wearAdvice(agg, p, 0))}</div></div>`;
+    }).join("");
+    return (rows || `<p class="muted">Open the app once with internet to load the weather for each stop.</p>`) +
+      `<div class="muted" style="font-size:11.5px;margin-top:10px">Each day page shows that day's weather for exactly where you'll be. Up to about 15 days ahead it's the live forecast; before that, the average of the same dates over the past 10 years. Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (includes Copernicus ERA5 data).</div>`;
+  }
+
+  /* ---------------- HIDDEN GEMS ---------------- */
+  const GEMS = T.gems;
+  const GEM_CITIES = [...new Set(GEMS.map((g) => g.city))];
+  function markBy(id) { const r = getChecks()[id]; return r && r.done && r.by ? r.by : ""; }
+  function gemCardHTML(g, compact) {
+    const want = isDone("gw-" + g.id), vis = isDone("gv-" + g.id);
+    const wb = markBy("gw-" + g.id), vb = markBy("gv-" + g.id);
+    return `<div class="card gem ${vis ? "visited" : ""}">
+      <div class="eyebrow">${esc(g.cat)} · ${esc(g.city)}</div>
+      <h3>${esc(g.name)}</h3>${g.local ? `<div class="gemlocal">${esc(g.local)}</div>` : ""}
+      <p class="why">${esc(g.why)}</p>
+      ${compact ? `<div class="gemfit"><b>Fits our plan:</b> ${esc(g.fits)} · ${esc(g.time)}</div>` : `<table class="t gemt">
+        <tr><td>Where</td><td>${esc(g.where)}</td></tr><tr><td>From our hotel</td><td>${esc(g.from)}</td></tr>
+        <tr><td>Time needed</td><td>${esc(g.time)}</td></tr><tr><td>Best time</td><td>${esc(g.when)}</td></tr>
+        <tr><td>Fits our plan</td><td>${esc(g.fits)}</td></tr><tr><td>Cost</td><td>${esc(g.cost)}</td></tr><tr><td>Effort</td><td>${esc(g.effort)}</td></tr></table>`}
+      <div class="btnrow"><button class="btn sm ${want ? "solid" : ""}" data-mark="gw-${g.id}">${want ? "★ Want to go" : "☆ Want to go"}</button>
+        <button class="btn sm ${vis ? "solid" : ""}" data-mark="gv-${g.id}">${vis ? "✓ Visited" : "Mark visited"}</button>
+        <a class="btn sm" href="${mapsLink(g.map)}" target="_blank" rel="noopener">Map</a></div>
+      ${wb || vb ? `<div class="gemwho">${wb ? `★ ${esc(wb)}` : ""}${wb && vb ? " · " : ""}${vb ? `✓ visited · ${esc(vb)}` : ""}</div>` : ""}
+    </div>`;
+  }
+  let gemMark = "All";
+  function viewGems(city) {
+    city = city ? decodeURIComponent(city) : "All";
+    let list = GEMS.filter((g) => city === "All" || g.city === city);
+    if (gemMark === "Want") list = list.filter((g) => isDone("gw-" + g.id));
+    if (gemMark === "Visited") list = list.filter((g) => isDone("gv-" + g.id));
+    const wantN = GEMS.filter((g) => isDone("gw-" + g.id)).length, visN = GEMS.filter((g) => isDone("gv-" + g.id)).length;
+    return `<div class="sec" style="padding-top:calc(var(--safe-t) + 34px)"><div class="seg"><a href="#journey">Days</a><a class="on" href="#gems">Hidden gems</a></div>
+      <div class="eyebrow" style="margin-top:22px">Off the beaten path</div><h2 style="font-size:44px;margin-bottom:6px">Hidden <em class="serif" style="color:var(--gold2)">Gems</em></h2>
+      <div class="muted">${GEMS.length} researched spots near our route — easy on the legs, most within minutes of our hotels. ${wantN} on the wish list · ${visN} visited.</div>
+      <div class="filters" style="margin-top:16px">${["All", ...GEM_CITIES].map((c) => `<a class="fchip ${c === city ? "on" : ""}" href="#gems${c === "All" ? "" : "/" + encodeURIComponent(c)}">${c === "Ho Chi Minh City" ? "Saigon" : c}</a>`).join("")}</div>
+      <div class="filters" style="margin-top:8px">${[["All", "Everything"], ["Want", "★ Want to go"], ["Visited", "✓ Visited"]].map(([k, l]) => `<button data-gemmark="${k}" class="${gemMark === k ? "on" : ""}">${l}</button>`).join("")}</div>
+    </div>
+    <div class="sec" style="padding-top:6px"><div class="cards">${list.map((g) => gemCardHTML(g)).join("") || `<div class="card empty"><div class="serif">Nothing here yet</div><p>Tap ☆ Want to go on any gem to build the family wish list.</p></div>`}</div></div>`;
+  }
+  document.addEventListener("click", (e) => { const b = e.target.closest("[data-gemmark]"); if (b) { gemMark = b.dataset.gemmark; render(true); } });
+  const gemsForDay = (n) => GEMS.filter((g) => g.days.includes(n));
 
   /* ---------------- TODAY ---------------- */
   function viewToday() {
@@ -201,8 +387,10 @@
           ${h && h.local ? `<button class="btn sm" data-driver="${h.id}">Tonight: ${esc(h.city)} hotel</button>` : ""}
           <a class="btn sm" href="#photos">Add today's photos</a>
           <a class="btn sm" href="#day/${day.n}">Full day details</a>
+          ${gemsForDay(day.n).length ? `<a class="btn sm" href="#day/${day.n}/gems">★ ${gemsForDay(day.n).length} hidden gems nearby</a>` : ""}
         </div>
       </div>
+      <div class="sec o1"><div class="eyebrow">Weather today</div>${weatherHTML(day)}</div>
       <div class="sec o3"><div class="eyebrow">Where we sleep tonight</div><div class="card"><div class="h" style="font-family:var(--serif);font-size:22px">${esc(day.sleep)}</div></div></div>
       </div></div>`;
   }
@@ -240,7 +428,7 @@
   /* ---------------- JOURNEY ---------------- */
   function viewJourney() {
     const today = nowICT().date;
-    return `<div class="sec" style="padding-top:calc(var(--safe-t) + 34px)"><div class="eyebrow">Eleven days · Five cities</div><h2 style="font-size:44px;margin-bottom:22px">The <em class="serif" style="color:var(--gold2)">Journey</em></h2></div>
+    return `<div class="sec" style="padding-top:calc(var(--safe-t) + 34px)"><div class="seg"><a class="on" href="#journey">Days</a><a href="#gems">Hidden gems</a></div><div class="eyebrow" style="margin-top:22px">Eleven days · Five cities</div><h2 style="font-size:44px;margin-bottom:22px">The <em class="serif" style="color:var(--gold2)">Journey</em></h2></div>
     <div class="journey">${DAYS.map((d) => `<a class="dcard ${d.date === today ? "today" : ""}" href="#day/${d.n}">
       <div class="bg" style="background-image:url('${wimg(d.img, 960)}')"></div>
       ${d.date === today ? `<span class="badge">Today</span>` : ""}
@@ -262,12 +450,14 @@
       <div class="sec o1"><div class="eyebrow">Tonight</div><div class="card"><div style="font-family:var(--serif);font-size:23px">${esc(d.sleep)}</div>
         ${h ? `<div class="muted" style="font-size:13.5px;margin-top:4px">${esc(h.address)}</div><div class="btnrow">${h.local ? `<button class="btn sm" data-driver="${h.id}">Show the driver</button>` : ""}<a class="btn sm" href="${mapsLink(h.map)}" target="_blank" rel="noopener">Map</a></div>` : ""}
       </div></div>
+      <div class="sec o1"><div class="eyebrow">Weather &amp; what to wear</div>${weatherHTML(d)}</div>
       <div class="sec o3"><div class="eyebrow">Getting around</div><h2>How to get there</h2><div class="card"><ul class="rows">${d.travel.map((t) => `<li><div class="h">${esc(t.place)}</div><div class="d">${esc(t.how)}</div><a href="${mapsLink(t.place.replace(/\(transfer\)/i, "") + ", " + d.city)}" target="_blank" rel="noopener" style="font-size:12px">Map →</a></li>`).join("")}</ul></div></div>
       <div class="sec o4"><div class="eyebrow">Where to eat</div><h2>Lunch &amp; dinner</h2><div class="food">
         ${["Lunch", "Dinner"].map((m) => d.food[m].length ? `<div class="card"><div class="meal">${m}</div><ul>${d.food[m].map((f) => `<li>${esc(f)}</li>`).join("")}</ul></div>` : "").join("")}
       </div><div class="note">Restaurant names are suggestions — check opening hours on the day. See the Dish decoder in Essentials for what's in each dish.</div></div>
       <div class="sec o5"><div class="eyebrow">Bookings</div><h2>What's booked</h2><div class="card"><ul class="rows">${books.map((b) => `<li><div class="d" style="color:#e5ddcf">${esc(b.detail)}</div></li>`).join("")}</ul></div></div>
       </div></div>
+      ${gemsForDay(d.n).length ? `<div class="sec" id="gems-anchor"><div class="eyebrow">Off the beaten path</div><h2>Hidden gems nearby</h2><div class="cards">${gemsForDay(d.n).map((g) => gemCardHTML(g, true)).join("")}</div><a class="btn sm" style="margin-top:12px" href="#gems/${encodeURIComponent(gemsForDay(d.n)[0].city)}">All ${esc(gemsForDay(d.n)[0].city)} gems with full details →</a></div>` : ""}
       ${photos.length ? `<div class="sec"><div class="eyebrow">Our photos from this day</div><div class="masonry" style="margin-top:12px">${photos.slice(0, 6).map((p) => `<button data-open="${esc(p.id)}"><img loading="lazy" src="${thumb(p.id, 600)}" onerror="this.onerror=null;this.src='${thumbAlt(p.id, 600)}'" alt=""></button>`).join("")}</div><a class="btn sm" href="#photos" style="margin-top:6px">See all ${photos.length}</a></div>` : ""}
       <div class="daynav">${prev ? `<a href="#day/${prev.n}">← Day ${prev.n}<b>${esc(prev.title)}</b></a>` : "<span></span>"}${next ? `<a class="r" href="#day/${next.n}">Day ${next.n} →<b>${esc(next.title)}</b></a>` : "<span></span>"}</div>`;
   }
@@ -557,7 +747,7 @@
         <div class="btnrow" id="cvQuick" style="margin-top:0"></div>
         <div class="muted" style="font-size:12px">Rates used: ₹1 = <input id="rV" class="field" style="width:80px;padding:4px 8px;font-size:13px;display:inline-block" value="${rates.VND}"> VND · ₹1 = <input id="rT" class="field" style="width:70px;padding:4px 8px;font-size:13px;display:inline-block" value="${rates.THB}"> THB. Approximate (Nov 2026) — edit to today's rate.</div>
       </div></details>
-      <details class="acc"><summary>Weather &amp; what to wear</summary><div class="body">${E.weather}</div></details>
+      <details class="acc"><summary>Weather &amp; what to wear</summary><div class="body">${weatherEssentialsHTML()}</div></details>
       <details class="acc"><summary>Dish decoder</summary><div class="body">${E.dishes}</div></details>
       <details class="acc"><summary>Useful phrases</summary><div class="body">${E.phrases}</div></details>
       <details class="acc"><summary>Getting around</summary><div class="body">${E.around}</div></details>
@@ -595,12 +785,13 @@
     let html;
     if (tab === "journey") html = viewJourney();
     else if (tab === "day") html = viewDay(+arg);
+    else if (tab === "gems") html = viewGems(arg);
     else if (tab === "stays") html = viewStays();
     else if (tab === "photos") html = viewPhotos();
     else if (tab === "essentials") html = viewEssentials();
     else html = viewToday();
     app.innerHTML = `<div class="view">${html}</div>`;
-    const active = tab === "day" ? "journey" : ["journey", "stays", "photos", "essentials"].includes(tab) ? tab : "today";
+    const active = tab === "day" || tab === "gems" ? "journey" : ["journey", "stays", "photos", "essentials"].includes(tab) ? tab : "today";
     document.querySelectorAll("#tabs a").forEach((a) => a.classList.toggle("on", a.dataset.tab === active));
     if (tab === "photos") bindPhotos();
     if (tab === "essentials") bindEssentials();
@@ -611,7 +802,9 @@
       if (el) { const c = countdownParts(); el.querySelectorAll(".num").forEach((n, i) => (n.textContent = i === 0 ? c.d : pad(i === 1 ? c.h : c.m))); }
       else if (phase() === "during") render(true);
     }, 30000);
-    if (keepScroll) window.scrollTo(0, y); else window.scrollTo(0, 0);
+    if (keepScroll) window.scrollTo(0, y);
+    else if (tab === "day" && h.split("/")[2] === "gems") { const a = document.getElementById("gems-anchor"); if (a) a.scrollIntoView(); else window.scrollTo(0, 0); }
+    else window.scrollTo(0, 0);
   }
   window.addEventListener("hashchange", () => { render(); if (location.hash.startsWith("#photos")) refreshPhotos(true); });
 
@@ -626,7 +819,8 @@
   render(); net();
   refreshPhotos(true);
   syncChecks();
-  window.addEventListener("online", syncChecks);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) syncChecks(); });
+  loadWeather();
+  window.addEventListener("online", () => { syncChecks(); loadWeather(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { syncChecks(); loadWeather(); } });
   if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 })();

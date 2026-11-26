@@ -283,3 +283,41 @@ select.field{appearance:none;-webkit-appearance:none}
   .masonry{columns:5}
   .journey{grid-template-columns:repeat(3,1fr)}
 }
+
+/* ---------- Journey / Gems toggle ---------- */
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:40px;padding:3px;background:var(--panel)}
+.seg a{padding:8px 18px;border-radius:30px;text-decoration:none;color:var(--muted);font-size:13px;font-weight:600;letter-spacing:.02em}
+.seg a.on{background:var(--gold);color:var(--ink)}
+.filters a.fchip{white-space:nowrap;padding:7px 14px;border-radius:30px;border:1px solid var(--line);font-size:13px;color:var(--muted);text-decoration:none}
+.filters a.fchip.on{color:var(--ink);background:var(--gold2);border-color:var(--gold2)}
+
+/* ---------- Hidden gems ---------- */
+.gem h3{font-family:var(--serif);font-weight:500;font-size:25px;line-height:1.15;margin:6px 0 2px}
+.gemlocal{font-size:12.5px;color:var(--muted);font-style:italic}
+.gem .why{font-size:14.5px;color:#e4dbcd;margin:10px 0 6px}
+.gemt td:first-child{width:34%;font-size:12px;letter-spacing:.04em;color:var(--gold)}
+.gemt td{font-size:13.5px}
+.gemfit{font-size:13.5px;color:#e4dbcd;border-left:2px solid var(--gold);padding:4px 0 4px 10px;margin:8px 0}
+.gemfit b{color:var(--gold2);font-weight:600}
+.gemwho{font-size:11.5px;color:var(--gold);margin-top:8px}
+.gem.visited{opacity:.78}
+.gem.visited h3::after{content:" ✓";color:var(--ok)}
+
+/* ---------- Weather ---------- */
+.wx + .wx{margin-top:12px}
+.wxhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.wxsrc{font-size:11px;color:var(--muted);margin-top:3px}
+.wxicon{font-size:34px;line-height:1}
+.wxtemp{font-family:var(--serif);font-size:46px;line-height:1;color:var(--gold2);margin:10px 0 4px}
+.wxtemp span{font-size:22px;color:var(--muted)}
+.wxmeta{font-size:13px;color:var(--muted)}
+.wxnote{font-size:13px;color:#e9d9bb;background:rgba(201,169,110,.08);border-radius:10px;padding:8px 10px;margin-top:10px}
+.wxwear{font-size:14px;margin-top:10px;color:#e6ddcf}
+.wxwear b{display:block;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);font-weight:600;margin-bottom:3px}
+.wxrow{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.wxrow:last-of-type{border-bottom:0}
+.wxrow-h{display:flex;justify-content:space-between;gap:10px}
+.wxrow-h b{font-family:var(--serif);font-size:19px;font-weight:600;color:var(--gold2)}
+.wxrow-h span{font-size:12px;color:var(--muted)}
+.wxrow-t{font-size:13px;color:var(--ivory);margin-top:2px}
+.wxrow-w{font-size:13px;color:var(--muted);margin-top:4px}

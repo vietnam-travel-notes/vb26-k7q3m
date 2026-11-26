@@ -1,5 +1,5 @@
 /* Offline support — keeps the guide working with no signal */
-const VERSION = "vb26-v3";
+const VERSION = "vb26-v4";
 const SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./data.js", "./config.js", "./manifest.json",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png"];
 importScripts("./data.js");
@@ -24,7 +24,7 @@ self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
-  if (url.hostname.includes("script.google") || url.hostname.includes("script.googleusercontent")) return; // photo album API: always live
+  if (url.hostname.includes("script.google") || url.hostname.includes("script.googleusercontent") || url.hostname.includes("open-meteo.com")) return; // photo album API: always live
   if (url.origin === location.origin) {
     // network first (so updates show at once), fall back to the saved copy when offline or slow
     e.respondWith(caches.open(VERSION).then(async (c) => {
